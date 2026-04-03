@@ -62,9 +62,22 @@ final class SquirrelInputController: IMKInputController {
       }
       // print("[DEBUG] FLAGSCHANGED client: \(sender ?? "nil"), modifiers: \(modifiers)")
       var rimeModifiers: UInt32 = SquirrelKeycode.osxModifiersToRime(modifiers: modifiers)
-      // For flags-changed event, keyCode is available since macOS 10.15
-      // (#715)
-      let rimeKeycode: UInt32 = SquirrelKeycode.osxKeycodeToRime(keycode: event.keyCode, keychar: nil, shift: false, caps: false)
+      // For flags-changed event, keyCode is available since macOS 10.15 (#715)
+      // Some remote desktop software (e.g. Parsec) sends flagsChanged events with
+      // keyCode defaulting to 0 (kVK_ANSI_A) instead of the actual modifier keycode,
+      // causing a ghost 'a' keypress. Validate and infer the correct keycode from
+      // the changed modifier flags when necessary. (#825)
+      var keyCode = event.keyCode
+      if !SquirrelKeycode.modifierKeycodes.contains(keyCode) {
+        guard let inferred = SquirrelKeycode.inferModifierKeycode(from: changes) else {
+          lastModifiers = modifiers
+          rimeUpdate()
+          handled = true
+          break
+        }
+        keyCode = inferred
+      }
+      let rimeKeycode: UInt32 = SquirrelKeycode.osxKeycodeToRime(keycode: keyCode, keychar: nil, shift: false, caps: false)
 
       if changes.contains(.capsLock) {
         // NOTE: rime assumes XK_Caps_Lock to be sent before modifier changes,
